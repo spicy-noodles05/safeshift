@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-  const body = await req.text();
+  await req.text();
   const sig = req.headers.get("stripe-signature");
 
   if (!sig) {
