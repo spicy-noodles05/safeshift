@@ -12,13 +12,13 @@ export function Navbar() {
         </Link>
         <nav className="flex items-center gap-4">
           <Link
-            href="/login"
+            href="/sign-in"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             Sign in
           </Link>
           <Button asChild size="sm">
-            <Link href="/register">Get started</Link>
+            <Link href="/sign-up">Get started</Link>
           </Button>
         </nav>
       </div>
