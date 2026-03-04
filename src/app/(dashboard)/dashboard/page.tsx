@@ -1,5 +1,12 @@
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Plus } from "lucide-react";
 
 export default function DashboardPage() {
@@ -8,11 +15,15 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">My Transactions</h1>
-          <p className="text-muted-foreground">Manage your active escrow transactions</p>
+          <p className="text-muted-foreground">
+            Manage your active escrow transactions
+          </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          New Transaction
+        <Button asChild>
+          <Link href="/dashboard/new-transaction">
+            <Plus className="mr-2 h-4 w-4" />
+            New Transaction
+          </Link>
         </Button>
       </div>
 
@@ -20,11 +31,16 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle>No transactions yet</CardTitle>
           <CardDescription>
-            Start a new transaction to buy or sell a vehicle securely.
+            Start a new transaction to securely sell your vehicle.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="outline">Create your first transaction</Button>
+          <Button asChild>
+            <Link href="/dashboard/new-transaction">
+              <Plus className="mr-2 h-4 w-4" />
+              Start a Transaction
+            </Link>
+          </Button>
         </CardContent>
       </Card>
     </div>
