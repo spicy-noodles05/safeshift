@@ -1,7 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Shield } from "lucide-react";
+import { Shield, CheckCircle2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -9,26 +9,36 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { CheckoutButton } from "@/components/pay/checkout-button";
+
+const SAFESHIFT_FEE = 149;
 
 export default async function PayPage({
   params,
 }: {
   params: { id: string };
 }) {
-  // Use service-role-level access so unauthenticated buyers can view the listing
-  const supabase = createClient();
+  // Admin client bypasses RLS so unauthenticated buyers can view the transaction
+  const supabase = createAdminClient();
 
   const { data: transaction } = await supabase
     .from("transactions")
-    .select("id, year, make, model, vin, odometer, sale_price, vehicle_description, status")
+    .select(
+      "id, year, make, model, vin, odometer, sale_price, vehicle_description, status"
+    )
     .eq("id", params.id)
     .single();
 
   if (!transaction) notFound();
 
   const salePrice = parseFloat(transaction.sale_price ?? "0");
-  const fee = 149;
+  const total = salePrice + SAFESHIFT_FEE;
+  const alreadyFunded =
+    transaction.status === "funded" ||
+    transaction.status === "completed" ||
+    transaction.status === "title_transfer" ||
+    transaction.status === "vehicle_inspection";
+
   const fmt = (n: number) =>
     n.toLocaleString("en-US", {
       style: "currency",
@@ -36,12 +46,17 @@ export default async function PayPage({
       minimumFractionDigits: 2,
     });
 
-  const rows = [
-    ["VIN", transaction.vin],
-    ["Odometer", transaction.odometer ? `${parseInt(transaction.odometer).toLocaleString()} miles` : "—"],
+  const rows: [string, string][] = [
+    ["VIN", transaction.vin ?? "—"],
+    [
+      "Odometer",
+      transaction.odometer
+        ? `${parseInt(transaction.odometer).toLocaleString()} miles`
+        : "—",
+    ],
     ["Sale Price", fmt(salePrice)],
-    ["SafeShift Fee", fmt(fee)],
-    ["Total", fmt(salePrice + fee)],
+    ["SafeShift Escrow Fee", fmt(SAFESHIFT_FEE)],
+    ["Total", fmt(total)],
   ];
 
   return (
@@ -55,7 +70,7 @@ export default async function PayPage({
         </div>
       </header>
 
-      <main className="container flex flex-1 items-start justify-center py-12">
+      <main className="container flex flex-1 justify-center py-12">
         <div className="w-full max-w-lg space-y-4">
           <Card>
             <CardHeader>
@@ -69,19 +84,18 @@ export default async function PayPage({
                 {transaction.year} {transaction.make} {transaction.model}
               </CardTitle>
               <CardDescription>
-                Review the vehicle details before proceeding to payment
+                Review the details below before proceeding to secure payment
               </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-6">
+              {/* Fee breakdown */}
               <dl className="divide-y rounded-lg border">
                 {rows.map(([label, value]) => (
                   <div
                     key={label}
                     className={`flex justify-between px-4 py-3 ${
-                      label === "Total"
-                        ? "bg-muted/50 font-semibold"
-                        : ""
+                      label === "Total" ? "bg-muted/50" : ""
                     }`}
                   >
                     <dt
@@ -95,15 +109,16 @@ export default async function PayPage({
                     </dt>
                     <dd
                       className={`text-sm font-medium ${
-                        label === "Total" ? "text-primary" : ""
+                        label === "Total" ? "text-primary font-bold" : ""
                       } ${label === "VIN" ? "font-mono" : ""}`}
                     >
-                      {value ?? "—"}
+                      {value}
                     </dd>
                   </div>
                 ))}
               </dl>
 
+              {/* Vehicle description */}
               {transaction.vehicle_description && (
                 <div>
                   <p className="mb-1 text-sm font-medium">
@@ -115,21 +130,31 @@ export default async function PayPage({
                 </div>
               )}
 
+              {/* Escrow explanation */}
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                 <p className="text-sm text-blue-800">
                   <span className="font-semibold">
                     Your payment is protected.
                   </span>{" "}
                   SafeShift holds your funds in secure escrow and only releases
-                  them after you inspect and confirm you&apos;ve received the
-                  vehicle.
+                  them after you inspect and confirm receipt of the vehicle.
                 </p>
               </div>
 
-              <Button className="w-full" size="lg" disabled>
-                Proceed to Payment{" "}
-                <span className="ml-2 text-xs opacity-70">(coming soon)</span>
-              </Button>
+              {/* CTA or funded state */}
+              {alreadyFunded ? (
+                <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-4 text-green-800">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  <div>
+                    <p className="font-semibold">Payment already received</p>
+                    <p className="text-sm text-green-700">
+                      Funds are held securely in escrow.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <CheckoutButton transactionId={transaction.id} />
+              )}
             </CardContent>
           </Card>
 
