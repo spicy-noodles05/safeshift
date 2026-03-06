@@ -36,7 +36,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      `http://${req.headers.get("host")}`;
     const salePrice = parseFloat(transaction.sale_price ?? "0");
     const vehicleName = `${transaction.year} ${transaction.make} ${transaction.model}`;
 
