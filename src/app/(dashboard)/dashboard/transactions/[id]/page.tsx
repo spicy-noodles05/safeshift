@@ -215,7 +215,7 @@ export default async function TransactionPage({
           </div>
         )}
 
-        {isFunded && isBuyer && (
+        {isFunded && (isBuyer || !transaction.buyer_id) && (
           <div className="space-y-3">
             <ConfirmReceiptButton
               transactionId={transaction.id}
@@ -227,7 +227,7 @@ export default async function TransactionPage({
           </div>
         )}
 
-        {isFunded && isSeller && (
+        {isFunded && isSeller && !isBuyer && transaction.buyer_id && (
           <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-4 text-muted-foreground">
             <Clock className="h-5 w-5 shrink-0" />
             <p className="text-sm">

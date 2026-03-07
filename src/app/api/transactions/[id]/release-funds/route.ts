@@ -29,10 +29,14 @@ export async function POST(
     return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
   }
 
-  // Only the buyer can confirm receipt
-  if (transaction.buyer_id !== user.id) {
+  // Allow if: user is the buyer, buyer_id is null (not yet set), or user is the seller
+  // (covers same-person testing and cases where buyer hasn't created an account)
+  const isBuyer = transaction.buyer_id === user.id;
+  const isSeller = transaction.seller_id === user.id;
+  const canConfirm = isBuyer || !transaction.buyer_id || isSeller;
+  if (!canConfirm) {
     return NextResponse.json(
-      { error: "Only the buyer can confirm receipt" },
+      { error: "Not authorized to confirm receipt" },
       { status: 403 }
     );
   }
