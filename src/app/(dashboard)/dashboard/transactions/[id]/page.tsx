@@ -11,6 +11,7 @@ import {
   Clock,
   CheckCircle2,
   Circle,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/transactions/copy-button";
+import { ConfirmReceiptButton } from "@/components/transactions/confirm-receipt-button";
 
 const SAFESHIFT_FEE = 149;
 
@@ -38,9 +40,26 @@ const STATUS_CONFIG: Record<
 };
 
 const TIMELINE_STEPS = [
-  { key: "created", label: "Transaction created", description: "Buyer payment link generated" },
-  { key: "funded", label: "Payment received", description: "Funds held securely in escrow" },
-  { key: "completed", label: "Sale completed", description: "Funds released to seller" },
+  {
+    key: "created",
+    label: "Transaction Created",
+    description: "Buyer payment link generated",
+  },
+  {
+    key: "funded",
+    label: "Payment Secured",
+    description: "Funds held securely in escrow",
+  },
+  {
+    key: "handoff",
+    label: "Vehicle Handoff",
+    description: "Buyer receives and inspects the vehicle",
+  },
+  {
+    key: "completed",
+    label: "Complete",
+    description: "Funds released to seller",
+  },
 ];
 
 function fmt(n: number) {
@@ -67,14 +86,12 @@ export default async function TransactionPage({
 }: {
   params: { id: string };
 }) {
-  // Auth check via server client
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/sign-in");
 
-  // Fetch transaction with seller profile via admin client (bypasses RLS for joins)
   const admin = createAdminClient();
   const { data: transaction } = await admin
     .from("transactions")
@@ -84,12 +101,10 @@ export default async function TransactionPage({
 
   if (!transaction) notFound();
 
-  // Authorization: only seller or buyer can view
   const isSeller = transaction.seller_id === user.id;
   const isBuyer = transaction.buyer_id === user.id;
   if (!isSeller && !isBuyer) redirect("/dashboard");
 
-  // Fetch seller profile
   const { data: sellerProfile } = await admin
     .from("profiles")
     .select("full_name, phone")
@@ -107,13 +122,17 @@ export default async function TransactionPage({
   const salePrice = parseFloat(transaction.sale_price ?? "0");
   const totalDue = salePrice + SAFESHIFT_FEE;
 
-  // Determine timeline step completion
-  const fundedStatuses = ["funded", "completed", "refunded"];
-  const completedStatuses = ["completed"];
+  const isFunded = transaction.status === "funded";
+  const isCompleted = transaction.status === "completed";
+  const isPending =
+    transaction.status === "pending" || transaction.status === "pending_payment";
+  const isDisputed = transaction.status === "disputed";
+
   const timelineState = {
     created: true,
-    funded: fundedStatuses.includes(transaction.status),
-    completed: completedStatuses.includes(transaction.status),
+    funded: ["funded", "completed", "refunded", "disputed"].includes(transaction.status),
+    handoff: isCompleted,
+    completed: isCompleted,
   };
 
   return (
@@ -146,8 +165,20 @@ export default async function TransactionPage({
           </Badge>
         </div>
 
-        {/* Buyer payment link (only show to seller while awaiting payment) */}
-        {isSeller && !fundedStatuses.includes(transaction.status) && (
+        {/* Action area */}
+        {isCompleted && (
+          <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-4 text-green-800">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" />
+            <div>
+              <p className="font-semibold">Transaction Complete</p>
+              <p className="text-sm text-green-700">
+                The vehicle has been received and funds released to the seller.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {isPending && isSeller && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Buyer Payment Link</CardTitle>
@@ -170,14 +201,55 @@ export default async function TransactionPage({
                 <CopyButton text={payUrl} />
               </div>
               <p className="text-xs text-muted-foreground">
-                Share this link with the buyer. They&apos;ll complete payment
-                through Stripe&apos;s secure checkout.
+                Waiting for payment. Share this link with the buyer — they&apos;ll
+                complete payment through Stripe&apos;s secure checkout.
               </p>
             </CardContent>
           </Card>
         )}
 
-        {/* Status Timeline */}
+        {isPending && isBuyer && (
+          <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-4 text-muted-foreground">
+            <Clock className="h-5 w-5 shrink-0" />
+            <p className="text-sm">Waiting for payment to be processed.</p>
+          </div>
+        )}
+
+        {isFunded && isBuyer && (
+          <div className="space-y-3">
+            <ConfirmReceiptButton
+              transactionId={transaction.id}
+              salePrice={salePrice}
+            />
+            <p className="text-center text-xs text-muted-foreground">
+              Only confirm once you have physically received the vehicle.
+            </p>
+          </div>
+        )}
+
+        {isFunded && isSeller && (
+          <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-4 text-muted-foreground">
+            <Clock className="h-5 w-5 shrink-0" />
+            <p className="text-sm">
+              Funds are held in escrow. Waiting for the buyer to confirm receipt.
+            </p>
+          </div>
+        )}
+
+        {(isFunded || isDisputed) && (
+          <Button
+            asChild
+            variant="outline"
+            className="w-full text-destructive border-destructive/40 hover:bg-destructive/5 hover:text-destructive"
+          >
+            <Link href={`/dashboard/transactions/${transaction.id}/dispute`}>
+              <AlertTriangle className="mr-2 h-4 w-4" />
+              Raise a Dispute
+            </Link>
+          </Button>
+        )}
+
+        {/* Timeline */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -188,7 +260,8 @@ export default async function TransactionPage({
           <CardContent>
             <ol className="relative space-y-0">
               {TIMELINE_STEPS.map((step, i) => {
-                const done = timelineState[step.key as keyof typeof timelineState];
+                const done =
+                  timelineState[step.key as keyof typeof timelineState];
                 const isLast = i === TIMELINE_STEPS.length - 1;
                 return (
                   <li key={step.key} className="flex gap-4 pb-6 last:pb-0">
@@ -200,7 +273,7 @@ export default async function TransactionPage({
                       )}
                       {!isLast && (
                         <div
-                          className={`mt-1 w-px flex-1 ${
+                          className={`mt-1 w-px flex-1 min-h-[24px] ${
                             done ? "bg-green-200" : "bg-border"
                           }`}
                         />
@@ -227,6 +300,11 @@ export default async function TransactionPage({
                           {formatDate(transaction.funded_at)}
                         </p>
                       )}
+                      {step.key === "completed" && transaction.completed_at && (
+                        <p className="mt-0.5 text-xs text-muted-foreground/70">
+                          {formatDate(transaction.completed_at)}
+                        </p>
+                      )}
                     </div>
                   </li>
                 );
@@ -246,7 +324,10 @@ export default async function TransactionPage({
           <CardContent>
             <dl className="divide-y">
               {[
-                ["Year / Make / Model", `${transaction.year} ${transaction.make} ${transaction.model}`],
+                [
+                  "Year / Make / Model",
+                  `${transaction.year} ${transaction.make} ${transaction.model}`,
+                ],
                 ["VIN", transaction.vin],
                 [
                   "Odometer",
@@ -340,7 +421,16 @@ export default async function TransactionPage({
               <div className="flex justify-between py-3">
                 <dt className="text-sm text-muted-foreground">Buyer email</dt>
                 <dd className="text-sm font-medium">
-                  {(transaction as Record<string, unknown>).buyer_email as string ?? "—"}
+                  {(transaction as Record<string, unknown>).buyer_email as string ??
+                    "—"}
+                </dd>
+              </div>
+              <div className="flex justify-between py-3">
+                <dt className="text-sm text-muted-foreground">
+                  Transaction ID
+                </dt>
+                <dd className="font-mono text-xs text-muted-foreground">
+                  {transaction.id}
                 </dd>
               </div>
               {transaction.stripe_payment_intent_id && (
@@ -348,6 +438,28 @@ export default async function TransactionPage({
                   <dt className="text-sm text-muted-foreground">Payment ID</dt>
                   <dd className="font-mono text-xs text-muted-foreground">
                     {transaction.stripe_payment_intent_id}
+                  </dd>
+                </div>
+              )}
+              <div className="flex justify-between py-3">
+                <dt className="text-sm text-muted-foreground">Created</dt>
+                <dd className="text-sm text-muted-foreground">
+                  {formatDate(transaction.created_at) ?? "—"}
+                </dd>
+              </div>
+              {transaction.funded_at && (
+                <div className="flex justify-between py-3">
+                  <dt className="text-sm text-muted-foreground">Funded</dt>
+                  <dd className="text-sm text-muted-foreground">
+                    {formatDate(transaction.funded_at)}
+                  </dd>
+                </div>
+              )}
+              {transaction.completed_at && (
+                <div className="flex justify-between py-3">
+                  <dt className="text-sm text-muted-foreground">Completed</dt>
+                  <dd className="text-sm text-muted-foreground">
+                    {formatDate(transaction.completed_at)}
                   </dd>
                 </div>
               )}
